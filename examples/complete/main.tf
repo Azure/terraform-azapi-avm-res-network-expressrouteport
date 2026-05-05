@@ -42,16 +42,28 @@ module "naming" {
   version = "~> 0.3"
 }
 
+resource "random_string" "suffix" {
+  length  = 4
+  special = false
+  upper   = false
+}
+
 # This is required for resource modules
 resource "azurerm_resource_group" "this" {
   location = module.regions.regions[random_integer.region_index.result].name
   name     = module.naming.resource_group.name_unique
 }
 
-# This is the module call
-# Do not specify location here due to the randomization above.
-# Leaving location as `null` will cause the module to use the resource group location
-# with a data source.
+# Pre-existing user-assigned identity to assign to the ExpressRoute Port.
+# The module does not create the identity; it only assigns it.
+resource "azurerm_user_assigned_identity" "this" {
+  location            = azurerm_resource_group.this.location
+  name                = "id-erp-avm-${random_string.suffix.result}"
+  resource_group_name = azurerm_resource_group.this.name
+}
+
+# This is the module call demonstrating a complete configuration with both
+# links enabled and an authorization.
 module "test" {
   source = "../../"
 
@@ -60,9 +72,29 @@ module "test" {
   # source             = "Azure/avm-res-network-expressrouteport/azurerm"
   # version            = "~> 0.1"
   location            = azurerm_resource_group.this.location
-  name                = module.naming.express_route_port.name_unique
+  name                = "test-erp-avm-${random_string.suffix.result}"
   peering_location    = "Equinix-Seattle-SE2"
   resource_group_name = azurerm_resource_group.this.name
-  billing_type        = "MeteredData"
-  enable_telemetry    = var.enable_telemetry
+  # Create an authorization on the ExpressRoute Port.
+  # An authorization grants an ExpressRoute circuit permission to connect to this port.
+  authorizations = {
+    primary = {
+      name = "auth-${random_string.suffix.result}"
+    }
+  }
+  billing_type     = "MeteredData"
+  enable_telemetry = var.enable_telemetry
+  links = [
+    {
+      name        = "link1"
+      admin_state = "Disabled"
+    },
+    {
+      name        = "link2"
+      admin_state = "Disabled"
+    }
+  ]
+  managed_identities = {
+    user_assigned_resource_ids = [azurerm_user_assigned_identity.this.id]
+  }
 }

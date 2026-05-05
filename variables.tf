@@ -1,3 +1,23 @@
+# Private endpoints are not supported for ExpressRoute Ports.
+
+# ExpressRoute Port specific variables
+variable "bandwidth_in_gbps" {
+  type        = number
+  description = "Bandwidth of procured ports in Gbps. Typical values are 10, 100, or 400."
+  nullable    = false
+}
+
+variable "encapsulation" {
+  type        = string
+  description = "Encapsulation method on physical ports. Possible values are `Dot1Q` and `QinQ`."
+  nullable    = false
+
+  validation {
+    condition     = contains(["Dot1Q", "QinQ"], var.encapsulation)
+    error_message = "encapsulation must be one of: 'Dot1Q', 'QinQ'."
+  }
+}
+
 variable "location" {
   type        = string
   description = "Azure region where the resource should be deployed."
@@ -6,14 +26,18 @@ variable "location" {
 
 variable "name" {
   type        = string
-  description = "The name of the this resource."
+  description = "The name of the ExpressRoute Port resource."
 
   validation {
-    condition     = can(regex("TODO", var.name))
-    error_message = "The name must be TODO." # TODO remove the example below once complete:
-    #condition     = can(regex("^[a-z0-9]{5,50}$", var.name))
-    #error_message = "The name must be between 5 and 50 characters long and can only contain lowercase letters and numbers."
+    condition     = can(regex("^[a-zA-Z0-9][a-zA-Z0-9._-]{0,78}[a-zA-Z0-9_]$", var.name))
+    error_message = "The name must be 2-80 characters, start and end with alphanumeric or underscore, and may contain letters, numbers, underscores, hyphens, and periods."
   }
+}
+
+variable "peering_location" {
+  type        = string
+  description = "The name of the peering location that the ExpressRoute Port is mapped to physically."
+  nullable    = false
 }
 
 # This is required for most resource modules
@@ -22,27 +46,29 @@ variable "resource_group_name" {
   description = "The resource group where the resources will be deployed."
 }
 
-# required AVM interfaces
-# remove only if not supported by the resource
-# tflint-ignore: terraform_unused_declarations
-variable "customer_managed_key" {
-  type = object({
-    key_vault_resource_id = string
-    key_name              = string
-    key_version           = optional(string, null)
-    user_assigned_identity = optional(object({
-      resource_id = string
-    }), null)
-  })
-  default     = null
+variable "authorizations" {
+  type = map(object({
+    name = string
+  }))
+  default     = {}
   description = <<DESCRIPTION
-A map describing customer-managed keys to associate with the resource. This includes the following properties:
-- `key_vault_resource_id` - The resource ID of the Key Vault where the key is stored.
-- `key_name` - The name of the key.
-- `key_version` - (Optional) The version of the key. If not specified, the latest version is used.
-- `user_assigned_identity` - (Optional) An object representing a user-assigned identity with the following properties:
-  - `resource_id` - The resource ID of the user-assigned identity.
+(Optional) A map of ExpressRoute Port authorizations to create. The map key is an arbitrary name used to identify the authorization in Terraform and does not affect the Azure resource name.
+
+- `name` - (Required) The name of the authorization resource in Azure.
 DESCRIPTION
+  nullable    = false
+}
+
+variable "billing_type" {
+  type        = string
+  default     = "MeteredData"
+  description = "The billing type of the ExpressRoute Port resource. Possible values are `MeteredData` and `UnlimitedData`."
+  nullable    = false
+
+  validation {
+    condition     = contains(["MeteredData", "UnlimitedData"], var.billing_type)
+    error_message = "billing_type must be one of: 'MeteredData', 'UnlimitedData'."
+  }
 }
 
 variable "diagnostic_settings" {
@@ -101,6 +127,45 @@ DESCRIPTION
   nullable    = false
 }
 
+variable "links" {
+  type = list(object({
+    name        = string
+    admin_state = optional(string, "Disabled")
+    mac_sec_config = optional(object({
+      cak_secret_identifier = optional(string, null)
+      cipher                = optional(string, null)
+      ckn_secret_identifier = optional(string, null)
+      sci_state             = optional(string, "Disabled")
+    }), null)
+  }))
+  default     = []
+  description = <<DESCRIPTION
+(Optional) A list of physical link configurations for the ExpressRoute Port. Each ExpressRoute Port has two links (link1 and link2). If not specified, links remain in their default state.
+
+- `name` - The name of the link (e.g., `link1` or `link2`).
+- `admin_state` - (Optional) Administrative state of the physical port. Possible values are `Disabled` and `Enabled`. Defaults to `Disabled`.
+- `mac_sec_config` - (Optional) MACsec configuration for the link.
+  - `cak_secret_identifier` - (Optional) Key Vault Secret Identifier URL containing the MACsec CAK key.
+  - `cipher` - (Optional) MACsec cipher. Possible values are `GcmAes128`, `GcmAes256`, `GcmAesXpn128`, `GcmAesXpn256`.
+  - `ckn_secret_identifier` - (Optional) Key Vault Secret Identifier URL containing the MACsec CKN key.
+  - `sci_state` - (Optional) SCI mode. Possible values are `Disabled` and `Enabled`. Defaults to `Disabled`.
+DESCRIPTION
+  nullable    = false
+
+  validation {
+    condition     = alltrue([for l in var.links : contains(["Disabled", "Enabled"], l.admin_state)])
+    error_message = "Each link admin_state must be one of: 'Disabled', 'Enabled'."
+  }
+  validation {
+    condition = alltrue([
+      for l in var.links : l.mac_sec_config == null ? true :
+      l.mac_sec_config.cipher == null ? true :
+      contains(["GcmAes128", "GcmAes256", "GcmAesXpn128", "GcmAesXpn256"], l.mac_sec_config.cipher)
+    ])
+    error_message = "Each link mac_sec_config.cipher must be one of: 'GcmAes128', 'GcmAes256', 'GcmAesXpn128', 'GcmAesXpn256'."
+  }
+}
+
 variable "lock" {
   type = object({
     kind = string
@@ -120,7 +185,6 @@ DESCRIPTION
   }
 }
 
-# tflint-ignore: terraform_unused_declarations
 variable "managed_identities" {
   type = object({
     system_assigned            = optional(bool, false)
@@ -133,70 +197,6 @@ Controls the Managed Identity configuration on this resource. The following prop
 - `system_assigned` - (Optional) Specifies if the System Assigned Managed Identity should be enabled.
 - `user_assigned_resource_ids` - (Optional) Specifies a list of User Assigned Managed Identity resource IDs to be assigned to this resource.
 DESCRIPTION
-  nullable    = false
-}
-
-variable "private_endpoints" {
-  type = map(object({
-    name = optional(string, null)
-    role_assignments = optional(map(object({
-      role_definition_id_or_name             = string
-      principal_id                           = string
-      description                            = optional(string, null)
-      skip_service_principal_aad_check       = optional(bool, false)
-      condition                              = optional(string, null)
-      condition_version                      = optional(string, null)
-      delegated_managed_identity_resource_id = optional(string, null)
-    })), {})
-    lock = optional(object({
-      kind = string
-      name = optional(string, null)
-    }), null)
-    tags                                    = optional(map(string), null)
-    subnet_resource_id                      = string
-    private_dns_zone_group_name             = optional(string, "default")
-    private_dns_zone_resource_ids           = optional(set(string), [])
-    application_security_group_associations = optional(map(string), {})
-    private_service_connection_name         = optional(string, null)
-    network_interface_name                  = optional(string, null)
-    location                                = optional(string, null)
-    resource_group_name                     = optional(string, null)
-    ip_configurations = optional(map(object({
-      name               = string
-      private_ip_address = string
-    })), {})
-  }))
-  default     = {}
-  description = <<DESCRIPTION
-A map of private endpoints to create on this resource. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-
-- `name` - (Optional) The name of the private endpoint. One will be generated if not set.
-- `role_assignments` - (Optional) A map of role assignments to create on the private endpoint. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time. See `var.role_assignments` for more information.
-- `lock` - (Optional) The lock level to apply to the private endpoint. Default is `None`. Possible values are `None`, `CanNotDelete`, and `ReadOnly`.
-- `tags` - (Optional) A mapping of tags to assign to the private endpoint.
-- `subnet_resource_id` - The resource ID of the subnet to deploy the private endpoint in.
-- `private_dns_zone_group_name` - (Optional) The name of the private DNS zone group. One will be generated if not set.
-- `private_dns_zone_resource_ids` - (Optional) A set of resource IDs of private DNS zones to associate with the private endpoint. If not set, no zone groups will be created and the private endpoint will not be associated with any private DNS zones. DNS records must be managed external to this module.
-- `application_security_group_resource_ids` - (Optional) A map of resource IDs of application security groups to associate with the private endpoint. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-- `private_service_connection_name` - (Optional) The name of the private service connection. One will be generated if not set.
-- `network_interface_name` - (Optional) The name of the network interface. One will be generated if not set.
-- `location` - (Optional) The Azure location where the resources will be deployed. Defaults to the location of the resource group.
-- `resource_group_name` - (Optional) The resource group where the resources will be deployed. Defaults to the resource group of this resource.
-- `ip_configurations` - (Optional) A map of IP configurations to create on the private endpoint. If not specified the platform will create one. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-  - `name` - The name of the IP configuration.
-  - `private_ip_address` - The private IP address of the IP configuration.
-DESCRIPTION
-  nullable    = false
-}
-
-# This variable is used to determine if the private_dns_zone_group block should be included,
-# or if it is to be managed externally, e.g. using Azure Policy.
-# https://github.com/Azure/terraform-azurerm-avm-res-keyvault-vault/issues/32
-# Alternatively you can use AzAPI, which does not have this issue.
-variable "private_endpoints_manage_dns_zone_group" {
-  type        = bool
-  default     = true
-  description = "Whether to manage private DNS zone groups with this module. If set to false, you must manage private DNS zone groups externally, e.g. using Azure Policy."
   nullable    = false
 }
 

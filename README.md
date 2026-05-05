@@ -23,14 +23,12 @@ The following requirements are needed by this module:
 
 The following resources are used by this module:
 
-- [azurerm_management_lock.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/management_lock) (resource)
-- [azurerm_private_endpoint.this_managed_dns_zone_groups](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint) (resource)
-- [azurerm_private_endpoint.this_unmanaged_dns_zone_groups](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint) (resource)
-- [azurerm_private_endpoint_application_security_group_association.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/private_endpoint_application_security_group_association) (resource)
-- [azurerm_resource_group.TODO](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) (resource)
+- [azapi_resource.lock](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
+- [azapi_resource.this](https://registry.terraform.io/providers/Azure/azapi/latest/docs/resources/resource) (resource)
 - [azurerm_role_assignment.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/role_assignment) (resource)
 - [modtm_telemetry.telemetry](https://registry.terraform.io/providers/azure/modtm/latest/docs/resources/telemetry) (resource)
 - [random_uuid.telemetry](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/uuid) (resource)
+- [azapi_client_config.current](https://registry.terraform.io/providers/Azure/azapi/latest/docs/data-sources/client_config) (data source)
 - [azapi_client_config.telemetry](https://registry.terraform.io/providers/Azure/azapi/latest/docs/data-sources/client_config) (data source)
 - [modtm_module_source.telemetry](https://registry.terraform.io/providers/azure/modtm/latest/docs/data-sources/module_source) (data source)
 
@@ -38,6 +36,18 @@ The following resources are used by this module:
 ## Required Inputs
 
 The following input variables are required:
+
+### <a name="input_bandwidth_in_gbps"></a> [bandwidth\_in\_gbps](#input\_bandwidth\_in\_gbps)
+
+Description: Bandwidth of procured ports in Gbps. Typical values are 10, 100, or 400.
+
+Type: `number`
+
+### <a name="input_encapsulation"></a> [encapsulation](#input\_encapsulation)
+
+Description: Encapsulation method on physical ports. Possible values are `Dot1Q` and `QinQ`.
+
+Type: `string`
 
 ### <a name="input_location"></a> [location](#input\_location)
 
@@ -47,7 +57,13 @@ Type: `string`
 
 ### <a name="input_name"></a> [name](#input\_name)
 
-Description: The name of the this resource.
+Description: The name of the ExpressRoute Port resource.
+
+Type: `string`
+
+### <a name="input_peering_location"></a> [peering\_location](#input\_peering\_location)
+
+Description: The name of the peering location that the ExpressRoute Port is mapped to physically.
 
 Type: `string`
 
@@ -61,29 +77,29 @@ Type: `string`
 
 The following input variables are optional (have default values):
 
-### <a name="input_customer_managed_key"></a> [customer\_managed\_key](#input\_customer\_managed\_key)
+### <a name="input_authorizations"></a> [authorizations](#input\_authorizations)
 
-Description: A map describing customer-managed keys to associate with the resource. This includes the following properties:
-- `key_vault_resource_id` - The resource ID of the Key Vault where the key is stored.
-- `key_name` - The name of the key.
-- `key_version` - (Optional) The version of the key. If not specified, the latest version is used.
-- `user_assigned_identity` - (Optional) An object representing a user-assigned identity with the following properties:
-  - `resource_id` - The resource ID of the user-assigned identity.
+Description: (Optional) A map of ExpressRoute Port authorizations to create. The map key is an arbitrary name used to identify the authorization in Terraform and does not affect the Azure resource name.
+
+- `name` - (Required) The name of the authorization resource in Azure.
 
 Type:
 
 ```hcl
-object({
-    key_vault_resource_id = string
-    key_name              = string
-    key_version           = optional(string, null)
-    user_assigned_identity = optional(object({
-      resource_id = string
-    }), null)
-  })
+map(object({
+    name = string
+  }))
 ```
 
-Default: `null`
+Default: `{}`
+
+### <a name="input_billing_type"></a> [billing\_type](#input\_billing\_type)
+
+Description: The billing type of the ExpressRoute Port resource. Possible values are `MeteredData` and `UnlimitedData`.
+
+Type: `string`
+
+Default: `"MeteredData"`
 
 ### <a name="input_diagnostic_settings"></a> [diagnostic\_settings](#input\_diagnostic\_settings)
 
@@ -129,6 +145,35 @@ Type: `bool`
 
 Default: `true`
 
+### <a name="input_links"></a> [links](#input\_links)
+
+Description: (Optional) A list of physical link configurations for the ExpressRoute Port. Each ExpressRoute Port has two links (link1 and link2). If not specified, links remain in their default state.
+
+- `name` - The name of the link (e.g., `link1` or `link2`).
+- `admin_state` - (Optional) Administrative state of the physical port. Possible values are `Disabled` and `Enabled`. Defaults to `Disabled`.
+- `mac_sec_config` - (Optional) MACsec configuration for the link.
+  - `cak_secret_identifier` - (Optional) Key Vault Secret Identifier URL containing the MACsec CAK key.
+  - `cipher` - (Optional) MACsec cipher. Possible values are `GcmAes128`, `GcmAes256`, `GcmAesXpn128`, `GcmAesXpn256`.
+  - `ckn_secret_identifier` - (Optional) Key Vault Secret Identifier URL containing the MACsec CKN key.
+  - `sci_state` - (Optional) SCI mode. Possible values are `Disabled` and `Enabled`. Defaults to `Disabled`.
+
+Type:
+
+```hcl
+list(object({
+    name        = string
+    admin_state = optional(string, "Disabled")
+    mac_sec_config = optional(object({
+      cak_secret_identifier = optional(string, null)
+      cipher                = optional(string, null)
+      ckn_secret_identifier = optional(string, null)
+      sci_state             = optional(string, "Disabled")
+    }), null)
+  }))
+```
+
+Default: `[]`
+
 ### <a name="input_lock"></a> [lock](#input\_lock)
 
 Description: Controls the Resource Lock configuration for this resource. The following properties can be specified:
@@ -164,70 +209,6 @@ object({
 ```
 
 Default: `{}`
-
-### <a name="input_private_endpoints"></a> [private\_endpoints](#input\_private\_endpoints)
-
-Description: A map of private endpoints to create on this resource. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-
-- `name` - (Optional) The name of the private endpoint. One will be generated if not set.
-- `role_assignments` - (Optional) A map of role assignments to create on the private endpoint. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time. See `var.role_assignments` for more information.
-- `lock` - (Optional) The lock level to apply to the private endpoint. Default is `None`. Possible values are `None`, `CanNotDelete`, and `ReadOnly`.
-- `tags` - (Optional) A mapping of tags to assign to the private endpoint.
-- `subnet_resource_id` - The resource ID of the subnet to deploy the private endpoint in.
-- `private_dns_zone_group_name` - (Optional) The name of the private DNS zone group. One will be generated if not set.
-- `private_dns_zone_resource_ids` - (Optional) A set of resource IDs of private DNS zones to associate with the private endpoint. If not set, no zone groups will be created and the private endpoint will not be associated with any private DNS zones. DNS records must be managed external to this module.
-- `application_security_group_resource_ids` - (Optional) A map of resource IDs of application security groups to associate with the private endpoint. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-- `private_service_connection_name` - (Optional) The name of the private service connection. One will be generated if not set.
-- `network_interface_name` - (Optional) The name of the network interface. One will be generated if not set.
-- `location` - (Optional) The Azure location where the resources will be deployed. Defaults to the location of the resource group.
-- `resource_group_name` - (Optional) The resource group where the resources will be deployed. Defaults to the resource group of this resource.
-- `ip_configurations` - (Optional) A map of IP configurations to create on the private endpoint. If not specified the platform will create one. The map key is deliberately arbitrary to avoid issues where map keys maybe unknown at plan time.
-  - `name` - The name of the IP configuration.
-  - `private_ip_address` - The private IP address of the IP configuration.
-
-Type:
-
-```hcl
-map(object({
-    name = optional(string, null)
-    role_assignments = optional(map(object({
-      role_definition_id_or_name             = string
-      principal_id                           = string
-      description                            = optional(string, null)
-      skip_service_principal_aad_check       = optional(bool, false)
-      condition                              = optional(string, null)
-      condition_version                      = optional(string, null)
-      delegated_managed_identity_resource_id = optional(string, null)
-    })), {})
-    lock = optional(object({
-      kind = string
-      name = optional(string, null)
-    }), null)
-    tags                                    = optional(map(string), null)
-    subnet_resource_id                      = string
-    private_dns_zone_group_name             = optional(string, "default")
-    private_dns_zone_resource_ids           = optional(set(string), [])
-    application_security_group_associations = optional(map(string), {})
-    private_service_connection_name         = optional(string, null)
-    network_interface_name                  = optional(string, null)
-    location                                = optional(string, null)
-    resource_group_name                     = optional(string, null)
-    ip_configurations = optional(map(object({
-      name               = string
-      private_ip_address = string
-    })), {})
-  }))
-```
-
-Default: `{}`
-
-### <a name="input_private_endpoints_manage_dns_zone_group"></a> [private\_endpoints\_manage\_dns\_zone\_group](#input\_private\_endpoints\_manage\_dns\_zone\_group)
-
-Description: Whether to manage private DNS zone groups with this module. If set to false, you must manage private DNS zone groups externally, e.g. using Azure Policy.
-
-Type: `bool`
-
-Default: `true`
 
 ### <a name="input_role_assignments"></a> [role\_assignments](#input\_role\_assignments)
 
@@ -273,13 +254,27 @@ Default: `null`
 
 The following outputs are exported:
 
-### <a name="output_private_endpoints"></a> [private\_endpoints](#output\_private\_endpoints)
+### <a name="output_name"></a> [name](#output\_name)
 
-Description:   A map of the private endpoints created.
+Description: The name of the ExpressRoute Port resource.
+
+### <a name="output_resource"></a> [resource](#output\_resource)
+
+Description: The ExpressRoute Port resource.
+
+### <a name="output_resource_id"></a> [resource\_id](#output\_resource\_id)
+
+Description: The resource ID of the ExpressRoute Port.
 
 ## Modules
 
-No modules.
+The following Modules are called:
+
+### <a name="module_authorization"></a> [authorization](#module\_authorization)
+
+Source: ./modules/authorization
+
+Version:
 
 <!-- markdownlint-disable-next-line MD041 -->
 ## Data Collection
