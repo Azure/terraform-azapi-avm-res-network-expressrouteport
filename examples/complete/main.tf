@@ -46,7 +46,7 @@ resource "random_string" "suffix" {
 
 # This is required for resource modules
 resource "azurerm_resource_group" "this" {
-  location = module.regions.regions[random_integer.region_index.result].name
+  location = "italynorth"
   name     = module.naming.resource_group.name_unique
 }
 
@@ -84,10 +84,18 @@ module "test" {
     {
       name        = "link1"
       admin_state = "Disabled"
+      mac_sec_config = {
+        cipher    = "GcmAes128"
+        sci_state = "Disabled"
+      }
     },
     {
       name        = "link2"
       admin_state = "Disabled"
+      mac_sec_config = {
+        cipher    = "GcmAes128"
+        sci_state = "Disabled"
+      }
     }
   ]
   managed_identities = {

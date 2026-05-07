@@ -46,14 +46,12 @@ resource "random_string" "suffix" {
 
 # This is required for resource modules
 resource "azurerm_resource_group" "this" {
-  location = module.regions.regions[random_integer.region_index.result].name
+  location = "italynorth"
   name     = module.naming.resource_group.name_unique
 }
 
 # This is the module call
-# Do not specify location here due to the randomization above.
-# Leaving location as `null` will cause the module to use the resource group location
-# with a data source.
+# The example is pinned to italynorth to avoid regional availability issues.
 module "test" {
   source = "../../"
 
