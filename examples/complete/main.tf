@@ -64,7 +64,7 @@ module "test" {
   source = "../../"
 
   bandwidth_in_gbps = 10
-q  encapsulation     = "Dot1Q"
+  encapsulation     = "Dot1Q"
   # source             = "Azure/avm-res-network-expressrouteport/azurerm"
   # version            = "~> 0.1"
   location            = azurerm_resource_group.this.location
