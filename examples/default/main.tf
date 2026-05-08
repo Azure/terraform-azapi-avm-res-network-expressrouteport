@@ -90,13 +90,7 @@ module "test" {
       name = "auth-${random_string.suffix.result}"
     }
   }
-  billing_type = "MeteredData"
-  diagnostic_settings = {
-    to_law = {
-      metric_categories     = ["AllMetrics"]
-      workspace_resource_id = azurerm_log_analytics_workspace.this.id
-    }
-  }
+  billing_type     = "MeteredData"
   enable_telemetry = var.enable_telemetry
   links = [
     {
