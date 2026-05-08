@@ -1,14 +1,5 @@
 data "azapi_client_config" "current" {}
 
-locals {
-  managed_identities = length(var.managed_identities.user_assigned_resource_ids) > 0 ? {
-    this = {
-      type                       = "UserAssigned"
-      user_assigned_resource_ids = var.managed_identities.user_assigned_resource_ids
-    }
-  } : {}
-}
-
 resource "azapi_resource" "this" {
   location  = var.location
   name      = var.name
@@ -50,6 +41,7 @@ resource "azapi_resource" "this" {
 
   dynamic "identity" {
     for_each = local.managed_identities
+
     content {
       type         = identity.value.type
       identity_ids = identity.value.user_assigned_resource_ids
@@ -66,21 +58,18 @@ resource "azurerm_management_lock" "this" {
   notes      = var.lock.kind == "CanNotDelete" ? "Cannot delete the resource or its child resources." : "Cannot delete or modify the resource or its child resources."
 }
 
-locals {
-  role_definition_resource_substring = "providers/Microsoft.Authorization/roleDefinitions"
-}
-
 resource "azurerm_role_assignment" "this" {
-  for_each                               = var.role_assignments
-  scope                                  = azapi_resource.this.id
-  role_definition_id                     = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? each.value.role_definition_id_or_name : null
-  role_definition_name                   = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? null : each.value.role_definition_id_or_name
+  for_each = var.role_assignments
+
   principal_id                           = each.value.principal_id
+  scope                                  = azapi_resource.this.id
   condition                              = each.value.condition
   condition_version                      = each.value.condition_version
-  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
   delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
   principal_type                         = each.value.principal_type
+  role_definition_id                     = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? each.value.role_definition_id_or_name : null
+  role_definition_name                   = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? null : each.value.role_definition_id_or_name
+  skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
 }
 
 module "authorization" {
@@ -92,20 +81,21 @@ module "authorization" {
 }
 
 resource "azurerm_monitor_diagnostic_setting" "this" {
-  for_each                       = var.diagnostic_settings
+  for_each = var.diagnostic_settings
+
   name                           = each.value.name != null ? each.value.name : "diag-${var.name}"
   target_resource_id             = azapi_resource.this.id
-  storage_account_id             = each.value.storage_account_resource_id
   eventhub_authorization_rule_id = each.value.event_hub_authorization_rule_resource_id
   eventhub_name                  = each.value.event_hub_name
-  partner_solution_id            = each.value.marketplace_partner_resource_id
-  log_analytics_workspace_id     = each.value.workspace_resource_id
   log_analytics_destination_type = each.value.log_analytics_destination_type
-
+  log_analytics_workspace_id     = each.value.workspace_resource_id
+  partner_solution_id            = each.value.marketplace_partner_resource_id
+  storage_account_id             = each.value.storage_account_resource_id
 
   // Only metric settings supported for ExpressRoute Port at this time.
   dynamic "enabled_metric" {
     for_each = each.value.metric_categories
+
     content {
       category = enabled_metric.value
     }
