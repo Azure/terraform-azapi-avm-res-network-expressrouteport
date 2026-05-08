@@ -101,10 +101,6 @@ A map of diagnostic settings to create on the ExpressRoute Port. The map key is 
 DESCRIPTION
   nullable    = false
 
-  # validation {
-  #   condition     = alltrue([for _, v in var.diagnostic_settings : contains(["Dedicated", "AzureDiagnostics"], v.log_analytics_destination_type)])
-  #   error_message = "Log analytics destination type must be one of: 'Dedicated', 'AzureDiagnostics'."
-  # }
   validation {
     condition = alltrue(
       [
