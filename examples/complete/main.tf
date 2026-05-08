@@ -69,7 +69,7 @@ module "test" {
   # version            = "~> 0.1"
   location            = azurerm_resource_group.this.location
   name                = "test-erp-avm-${random_string.suffix.result}"
-  peering_location    = "Equinix-Seattle-SE2"
+  peering_location    = "Equinix-Singapore-SG1"
   resource_group_name = azurerm_resource_group.this.name
   # Create an authorization on the ExpressRoute Port.
   # An authorization grants an ExpressRoute circuit permission to connect to this port.
