@@ -92,7 +92,7 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
   partner_solution_id            = each.value.marketplace_partner_resource_id
   storage_account_id             = each.value.storage_account_resource_id
 
-  // Only metric settings supported for ExpressRoute Port at this time.
+  # Only metric settings supported for ExpressRoute Port at this time.
   dynamic "enabled_metric" {
     for_each = each.value.metric_categories
 
