@@ -57,21 +57,75 @@ resource "azurerm_resource_group" "this" {
   name     = module.naming.resource_group.name_unique
 }
 
-# This is the module call
-# The example is pinned to italynorth to avoid regional availability issues.
+# Pre-existing user-assigned identity to assign to the ExpressRoute Port.
+# The module does not create the identity; it only assigns it.
+resource "azurerm_user_assigned_identity" "this" {
+  location            = azurerm_resource_group.this.location
+  name                = "id-erp-avm-${random_string.suffix.result}"
+  resource_group_name = azurerm_resource_group.this.name
+}
+
+resource "azurerm_log_analytics_workspace" "this" {
+  location            = azurerm_resource_group.this.location
+  name                = "law-erp-avm-${random_string.suffix.result}"
+  resource_group_name = azurerm_resource_group.this.name
+  retention_in_days   = 30
+  sku                 = "PerGB2018"
+}
+
+locals {
+  link_state    = "Disabled"
+  macsec_cipher = "GcmAes128"
+  sci_state     = "Disabled"
+}
+
+# This is the module call demonstrating a complete configuration with both
+# links enabled and an authorization.
 module "test" {
   source = "../../"
 
-  bandwidth_in_gbps = 10
-  encapsulation     = "Dot1Q"
-  # source             = "Azure/avm-res-network-expressrouteport/azurerm"
-  # version            = "~> 0.1"
+  bandwidth_in_gbps   = 10
+  encapsulation       = "Dot1Q"
   location            = azurerm_resource_group.this.location
   name                = "test-erp-avm-${random_string.suffix.result}"
   peering_location    = "Equinix-Singapore-SG1"
   resource_group_name = azurerm_resource_group.this.name
-  billing_type        = "MeteredData"
-  enable_telemetry    = var.enable_telemetry
+  # Create an authorization on the ExpressRoute Port.
+  # An authorization grants an ExpressRoute circuit permission to connect to this port.
+  authorizations = {
+    primary = {
+      name = "auth-${random_string.suffix.result}"
+    }
+  }
+  billing_type = "MeteredData"
+  diagnostic_settings = {
+    to_law = {
+      metric_categories     = ["AllMetrics"]
+      workspace_resource_id = azurerm_log_analytics_workspace.this.id
+    }
+  }
+  enable_telemetry = var.enable_telemetry
+  links = [
+    {
+      name        = "link1"
+      admin_state = local.link_state
+      mac_sec_config = {
+        cipher    = local.macsec_cipher
+        sci_state = local.sci_state
+      }
+    },
+    {
+      name        = "link2"
+      admin_state = local.link_state
+      mac_sec_config = {
+        cipher    = local.macsec_cipher
+        sci_state = local.sci_state
+      }
+    }
+  ]
+  managed_identities = {
+    user_assigned_resource_ids = [azurerm_user_assigned_identity.this.id]
+  }
 }
 ```
 
@@ -90,7 +144,9 @@ The following requirements are needed by this module:
 
 The following resources are used by this module:
 
+- [azurerm_log_analytics_workspace.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/log_analytics_workspace) (resource)
 - [azurerm_resource_group.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/resource_group) (resource)
+- [azurerm_user_assigned_identity.this](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/user_assigned_identity) (resource)
 - [random_integer.region_index](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/integer) (resource)
 - [random_string.suffix](https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/string) (resource)
 

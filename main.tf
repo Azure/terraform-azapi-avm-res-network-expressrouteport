@@ -91,42 +91,20 @@ module "authorization" {
   name                           = each.value.name
 }
 
-# TODO - review diagnostic settings requirements
-# resource "azapi_resource" "diagnostic_setting" {
-#   for_each = var.diagnostic_settings
+resource "azurerm_monitor_diagnostic_setting" "this" {
+  for_each = var.diagnostic_settings
 
-#   type      = "Microsoft.Insights/diagnosticSettings@2021-05-01-preview"
-#   parent_id = azapi_resource.this.id
-#   name      = coalesce(each.value.name, "diag-${var.name}-${each.key}")
+  name                           = each.value.name != null ? each.value.name : "diag-${azapi_resource.this.name}"
+  target_resource_id             = azapi_resource.this.id
+  eventhub_authorization_rule_id = each.value.event_hub_authorization_rule_resource_id
+  eventhub_name                  = each.value.event_hub_name
+  log_analytics_destination_type = each.value.log_analytics_destination_type
+  log_analytics_workspace_id     = each.value.workspace_resource_id
+  partner_solution_id            = each.value.marketplace_partner_resource_id
+  storage_account_id             = each.value.storage_account_resource_id
 
-#   body = {
-#     properties = {
-#       workspaceId                 = each.value.workspace_resource_id
-#       storageAccountId            = each.value.storage_account_resource_id
-#       eventHubAuthorizationRuleId = each.value.event_hub_authorization_rule_resource_id
-#       eventHubName                = each.value.event_hub_name
-#       marketplacePartnerId        = each.value.marketplace_partner_resource_id
-#       logAnalyticsDestinationType = each.value.log_analytics_destination_type
-#       logs = concat(
-#         [for cat in each.value.log_categories : {
-#           category        = cat
-#           enabled         = true
-#           retentionPolicy = { enabled = false, days = 0 }
-#         }],
-#         [for grp in each.value.log_groups : {
-#           categoryGroup   = grp
-#           enabled         = true
-#           retentionPolicy = { enabled = false, days = 0 }
-#         }]
-#       )
-#       metrics = [for cat in each.value.metric_categories : {
-#         category        = cat
-#         enabled         = true
-#         retentionPolicy = { enabled = false, days = 0 }
-#       }]
-#     }
-#   }
-
-#   response_export_values = []
-# }
+  enabled_metric {
+    category = "AllMetrics"
+  }
+}
 
