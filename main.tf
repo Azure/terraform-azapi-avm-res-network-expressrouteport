@@ -1,5 +1,14 @@
 data "azapi_client_config" "current" {}
 
+locals {
+  managed_identities = length(var.managed_identities.user_assigned_resource_ids) > 0 ? {
+    this = {
+      type                       = "UserAssigned"
+      user_assigned_resource_ids = var.managed_identities.user_assigned_resource_ids
+    }
+  } : {}
+}
+
 resource "azapi_resource" "this" {
   location  = var.location
   name      = var.name
@@ -40,47 +49,38 @@ resource "azapi_resource" "this" {
   update_headers = var.enable_telemetry ? { "User-Agent" : local.avm_azapi_header } : null
 
   dynamic "identity" {
-    for_each = local.managed_identities.system_assigned_user_assigned
-
+    for_each = local.managed_identities
     content {
       type         = identity.value.type
-      identity_ids = tolist(identity.value.user_assigned_resource_ids)
+      identity_ids = identity.value.user_assigned_resource_ids
     }
   }
 }
 
-# required AVM resource interfaces
-resource "azapi_resource" "lock" {
+resource "azurerm_management_lock" "this" {
   count = var.lock != null ? 1 : 0
 
-  name      = coalesce(var.lock.name, "lock-${var.lock.kind}")
-  parent_id = azapi_resource.this.id
-  type      = "Microsoft.Authorization/locks@2020-05-01"
-  body = {
-    properties = {
-      level = var.lock.kind
-      notes = var.lock.kind == "CanNotDelete" ? "Cannot delete the resource or its child resources." : "Cannot delete or modify the resource or its child resources."
-    }
-  }
-  create_headers         = var.enable_telemetry ? { "User-Agent" : local.avm_azapi_header } : null
-  delete_headers         = var.enable_telemetry ? { "User-Agent" : local.avm_azapi_header } : null
-  read_headers           = var.enable_telemetry ? { "User-Agent" : local.avm_azapi_header } : null
-  response_export_values = []
-  update_headers         = var.enable_telemetry ? { "User-Agent" : local.avm_azapi_header } : null
+  lock_level = var.lock.kind
+  name       = coalesce(var.lock.name, "lock-${var.lock.kind}")
+  scope      = azapi_resource.this.id
+  notes      = var.lock.kind == "CanNotDelete" ? "Cannot delete the resource or its child resources." : "Cannot delete or modify the resource or its child resources."
+}
+
+locals {
+  role_definition_resource_substring = "providers/Microsoft.Authorization/roleDefinitions"
 }
 
 resource "azurerm_role_assignment" "this" {
-  for_each = var.role_assignments
-
-  principal_id                           = each.value.principal_id
+  for_each                               = var.role_assignments
   scope                                  = azapi_resource.this.id
-  condition                              = each.value.condition
-  condition_version                      = each.value.condition_version
-  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
-  principal_type                         = each.value.principal_type
   role_definition_id                     = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? each.value.role_definition_id_or_name : null
   role_definition_name                   = strcontains(lower(each.value.role_definition_id_or_name), lower(local.role_definition_resource_substring)) ? null : each.value.role_definition_id_or_name
+  principal_id                           = each.value.principal_id
+  condition                              = each.value.condition
+  condition_version                      = each.value.condition_version
   skip_service_principal_aad_check       = each.value.skip_service_principal_aad_check
+  delegated_managed_identity_resource_id = each.value.delegated_managed_identity_resource_id
+  principal_type                         = each.value.principal_type
 }
 
 module "authorization" {
@@ -92,19 +92,22 @@ module "authorization" {
 }
 
 resource "azurerm_monitor_diagnostic_setting" "this" {
-  for_each = var.diagnostic_settings
-
-  name                           = each.value.name != null ? each.value.name : "diag-${azapi_resource.this.name}"
+  for_each                       = var.diagnostic_settings
+  name                           = each.value.name != null ? each.value.name : "diag-${var.name}"
   target_resource_id             = azapi_resource.this.id
+  storage_account_id             = each.value.storage_account_resource_id
   eventhub_authorization_rule_id = each.value.event_hub_authorization_rule_resource_id
   eventhub_name                  = each.value.event_hub_name
-  log_analytics_destination_type = each.value.log_analytics_destination_type
-  log_analytics_workspace_id     = each.value.workspace_resource_id
   partner_solution_id            = each.value.marketplace_partner_resource_id
-  storage_account_id             = each.value.storage_account_resource_id
+  log_analytics_workspace_id     = each.value.workspace_resource_id
+  log_analytics_destination_type = each.value.log_analytics_destination_type
 
-  enabled_metric {
-    category = "AllMetrics"
+
+  // Only metric settings supported for ExpressRoute Port at this time.
+  dynamic "enabled_metric" {
+    for_each = each.value.metric_categories
+    content {
+      category = enabled_metric.value
+    }
   }
 }
-
