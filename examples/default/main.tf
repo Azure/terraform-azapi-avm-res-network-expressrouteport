@@ -93,9 +93,8 @@ module "test" {
   billing_type = "MeteredData"
   diagnostic_settings = {
     to_law = {
-      log_analytics_destination_type = "Dedicated"
-      metric_categories              = ["AllMetrics"]
-      workspace_resource_id          = azurerm_log_analytics_workspace.this.id
+      metric_categories     = ["AllMetrics"]
+      workspace_resource_id = azurerm_log_analytics_workspace.this.id
     }
   }
   enable_telemetry = var.enable_telemetry
